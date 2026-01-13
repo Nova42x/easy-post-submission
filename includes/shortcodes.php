@@ -135,6 +135,82 @@ if ( ! class_exists( 'Easy_Post_Submission_Form_Shortcode', false ) ) {
             wp_enqueue_style( 'rbsm-client-style' );
             wp_enqueue_script( 'rbsm-client' );
 
+            // Add table paste fix script
+            $table_fix_script = "
+            (function() {
+                // Wait for Quill to be initialized
+                function initTableFix() {
+                    if (typeof Quill === 'undefined') {
+                        setTimeout(initTableFix, 100);
+                        return;
+                    }
+                    
+                    // Add custom clipboard matcher for tables
+                    var Clipboard = Quill.import('modules/clipboard');
+                    var Delta = Quill.import('delta');
+                    
+                    class CustomClipboard extends Clipboard {
+                        onPaste(e) {
+                            if (e.defaultPrevented || !this.quill.isEnabled()) return;
+                            
+                            var range = this.quill.getSelection();
+                            var delta = new Delta().retain(range.index);
+                            
+                            var clipboardData = e.clipboardData || window.clipboardData;
+                            var html = clipboardData.getData('text/html');
+                            
+                            if (html && html.indexOf('<table') !== -1) {
+                                // Process table HTML
+                                var tempDiv = document.createElement('div');
+                                tempDiv.innerHTML = html;
+                                var table = tempDiv.querySelector('table');
+                                
+                                if (table) {
+                                    var convertedHTML = this.convertTableToHTML(table);
+                                    this.quill.clipboard.dangerouslyPasteHTML(range.index, convertedHTML, 'user');
+                                    e.preventDefault();
+                                    return;
+                                }
+                            }
+                            
+                            super.onPaste(e);
+                        }
+                        
+                        convertTableToHTML(table) {
+                            var html = '<table><tbody>';
+                            var rows = table.querySelectorAll('tr');
+                            
+                            rows.forEach(function(row, rowIndex) {
+                                html += '<tr>';
+                                var cells = row.querySelectorAll('th, td');
+                                var cellTag = rowIndex === 0 ? 'th' : 'td';
+                                
+                                cells.forEach(function(cell) {
+                                    html += '<' + cellTag + '>' + cell.innerHTML + '</' + cellTag + '>';
+                                });
+                                
+                                html += '</tr>';
+                            });
+                            
+                            html += '</tbody></table>';
+                            return html;
+                        }
+                    }
+                    
+                    // Register the custom clipboard module
+                    Quill.register('modules/clipboard', CustomClipboard, true);
+                }
+                
+                // Initialize when DOM is ready
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initTableFix);
+                } else {
+                    initTableFix();
+                }
+            })();
+            ";
+            wp_add_inline_script( 'rbsm-client', $table_fix_script, 'after' );
+
             return $output;
         }
 
